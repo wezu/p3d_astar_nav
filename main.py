@@ -1,4 +1,5 @@
 from panda3d.core import *
+from panda3d.bullet import *
 from direct.showbase import ShowBase
 from direct.showbase.DirectObject import DirectObject
 from direct.gui.OnscreenText import OnscreenText
@@ -34,57 +35,81 @@ class Demo(DirectObject):
         base.trackball.node().setHpr(0, 40, 0)
         base.trackball.node().setPos(0, 500, 0)
 
-        mesh=loader.loadModel('mesh1')
+        mesh=loader.loadModel('mesh2')
         mesh.reparentTo(render)
-        #mesh.setRenderModeFilledWireframe((0,1,0, 1))
+        mesh.setRenderModeFilledWireframe((0,1,0, 1))
 
         self.frowney=loader.loadModel('frowney')
         self.frowney.reparentTo(render)
+        self.frowney.setH(180.0) #pathfallower walks backwards...
         self.frowney.setZ(2.0)
         self.frowney.setScale(2.0)
         self.frowney.flattenStrong()
         self.seeker=Pathfollower(node=self.frowney, move_speed=50.0, turn_speed=800.0, min_distance=5.0)
 
-        self.plane = Plane(Vec3(0, 0, 1), Point3(0, 0, -0.01))
+        #self.plane = Plane(Vec3(0, 0, 1), Point3(0, 0, -0.01))
 
         self.graph=self.make_nav_graph(mesh)
         self.start=Point3(0,0,0)
         self.end=None
 
+        #mouse picking/collision detection
+        self.world_node = render.attachNewNode('World')
+        self.world = BulletWorld()
+
+        triMeshData = BulletTriangleMesh()
+        for np in mesh.findAllMatches("**/+GeomNode"):
+            geomNode=np.node()
+            for i in range(geomNode.getNumGeoms()):
+                geom=geomNode.getGeom(i)
+                triMeshData.addGeom(geom)
+        shape = BulletTriangleMeshShape(triMeshData, dynamic=False)
+        geometry = self.world_node.attachNewNode(BulletRigidBodyNode('StaticGeometry'))
+        geometry.node().addShape(shape)
+        geometry.node().setMass(0.0)
+        self.world.attachRigidBody(geometry.node())
+
+
         self.accept('mouse1', self.put_target)
 
 
     def put_target(self):
-        if self.start is None:
-            self.start=self.getMousePos()
-            self.frowney.setPos(self.start)
-        elif self.end is None:
-            self.end = self.getMousePos()
-            path=self.find_path(self.start, self.end, self.graph)
-            self.curve=self.draw_curve(path)
-            smooth_path=self.curve.getPoints(len(path)*2)
-            self.seeker.followPath(smooth_path)
-        else:
-            self.start=self.end
-            if self.seeker.active:
-                self.seeker.stop()
-                self.start=self.seeker.node.getPos()
-            self.end=self.getMousePos()
-            path=self.find_path(self.start, self.end, self.graph)
-            self.curve=self.draw_curve(path)
-            smooth_path=self.curve.getPoints(len(path)*2)
-            self.seeker.followPath(smooth_path)
+        mpos=self.getMousePos()
+        if mpos:
+            if self.start is None:
+                self.start=mpos
+                self.frowney.setPos(self.start)
+            elif self.end is None:
+                self.end = mpos
+                path=self.find_path(self.start, self.end, self.graph)
+                self.curve=self.draw_curve(path)
+                smooth_path=self.curve.getPoints(len(path)*4)
+                self.seeker.followPath(smooth_path)
+            else:
+                self.curve.removeNode()
+                self.start=self.end
+                if self.seeker.active:
+                    self.seeker.stop()
+                    self.start=self.seeker.node.getPos()
+                self.end=mpos
+                path=self.find_path(self.start, self.end, self.graph)
+                self.curve=self.draw_curve(path)
+                smooth_path=self.curve.getPoints(len(path)*4)
+                self.seeker.followPath(smooth_path)
 
     def getMousePos(self):
         if base.mouseWatcherNode.hasMouse():
-            mpos = base.mouseWatcherNode.getMouse()
-            pos3d = Point3()
-            nearPoint = Point3()
-            farPoint = Point3()
-            base.camLens.extrude(mpos, nearPoint, farPoint)
-            if self.plane.intersectsLine(pos3d, render.getRelativePoint(camera, nearPoint),render.getRelativePoint(camera, farPoint)):
-                return pos3d
-            return None
+            pMouse = base.mouseWatcherNode.getMouse()
+            pFrom = Point3()
+            pTo = Point3()
+            base.camLens.extrude(pMouse, pFrom, pTo)
+            # Transform to global coordinates
+            pFrom = render.getRelativePoint(base.cam, pFrom)
+            pTo = render.getRelativePoint(base.cam, pTo)
+            result = self.world.rayTestClosest(pFrom, pTo)
+            if result.hasHit():
+                return result.getHitPos()
+        return None
 
     def draw_curve(self, path):
         r=Rope()
@@ -95,6 +120,7 @@ class Demo(DirectObject):
         #r.ropeNode.setThickness(5.0)
         #r.reparentTo(render)
         #r.setColor(1,0,1, 1)
+        #r.setZ(1)
         return r
 
     def find_path(self, start, end, graph):
@@ -131,6 +157,7 @@ class Demo(DirectObject):
         #get the position of each vert
         start_time = timer()
         self.triangles=[]
+        mesh.flattenStrong()
         geomNodeCollection = mesh.findAllMatches('**/+GeomNode')
         for nodePath in geomNodeCollection:
             geomNode = nodePath.node()
