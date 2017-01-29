@@ -112,7 +112,7 @@ class Pathfollower():
                 newHpr = origHpr + (targetHpr - origHpr) * t
                 self.node.setHpr(newHpr)
                 #slow down on slopes/bends
-                move_speed=self.move_speed/(max(delta/20.0, 1.0))
+                move_speed=self.move_speed/(max(delta/30.0, 1.0))
 
             #move forward
             #print move_speed

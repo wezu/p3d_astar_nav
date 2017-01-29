@@ -45,7 +45,7 @@ class Demo(DirectObject):
         self.frowney.setZ(2.0)
         self.frowney.setScale(2.0)
         self.frowney.flattenStrong()
-        self.seeker=Pathfollower(node=self.frowney, move_speed=50.0, turn_speed=800.0, min_distance=5.0)
+        self.seeker=Pathfollower(node=self.frowney, move_speed=50.0, turn_speed=300.0, min_distance=5.0)
 
         #self.plane = Plane(Vec3(0, 0, 1), Point3(0, 0, -0.01))
 
@@ -83,10 +83,14 @@ class Demo(DirectObject):
                 self.end = mpos
                 path=self.find_path(self.start, self.end, self.graph)
                 self.curve=self.draw_curve(path)
-                smooth_path=self.curve.getPoints(len(path)*4)
+                if self.curve is not None:
+                    smooth_path=self.curve.getPoints(len(path)*4)
+                else:
+                    smooth_path=path
                 self.seeker.followPath(smooth_path)
             else:
-                self.curve.removeNode()
+                if self.curve is not None:
+                    self.curve.removeNode()
                 self.start=self.end
                 if self.seeker.active:
                     self.seeker.stop()
@@ -94,7 +98,10 @@ class Demo(DirectObject):
                 self.end=mpos
                 path=self.find_path(self.start, self.end, self.graph)
                 self.curve=self.draw_curve(path)
-                smooth_path=self.curve.getPoints(len(path)*4)
+                if self.curve is not None:
+                    smooth_path=self.curve.getPoints(len(path)*4)
+                else:
+                    smooth_path=path
                 self.seeker.followPath(smooth_path)
 
     def getMousePos(self):
@@ -112,6 +119,8 @@ class Demo(DirectObject):
         return None
 
     def draw_curve(self, path):
+        if len(path)<4:
+            return None
         r=Rope()
         verts=[]
         for point in path:
