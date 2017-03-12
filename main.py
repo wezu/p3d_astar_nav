@@ -5,7 +5,7 @@ from direct.showbase import ShowBase
 from direct.showbase.DirectObject import DirectObject
 from direct.gui.OnscreenText import OnscreenText
 
-from pathfollower import Pathfollower
+from pathfollower import PathFollower
 from navgraph import NavGraph
 
 class Demo(DirectObject):

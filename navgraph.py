@@ -32,9 +32,9 @@ class NavGraph:
         @wraps(func)
         def wrapper(*args, **kwargs):
             if args[0].debug:
-                start = time.perf_counter()
+                start = time.time()
                 r = func(*args, **kwargs)
-                end = time.perf_counter()
+                end = time.time()
                 print('DEBUG: {}.{}() time: {}'.format(func.__module__, func.__name__, end-start))
             else:
                 r = func(*args, **kwargs)
