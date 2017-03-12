@@ -6,7 +6,7 @@ def _distance(start, end):
     v=end-start
     return v.length()
 
-class Pathfollower():
+class PathFollower:
     def __init__(self, node, move_speed=4.0, turn_speed=300.0, min_distance=0.5, draw_line=False):
         self.vis_node=node
         self.node=NodePath('Pathfollower')
@@ -42,7 +42,7 @@ class Pathfollower():
         dist=self.vis_node.get_distance(self.node)
 
         if dist > move_speed +pad:
-            move_speed*= dist/3.0
+            move_speed*= dist/2.0
             self.vis_node.set_y(self.vis_node,move_speed)
 
         return task.cont
