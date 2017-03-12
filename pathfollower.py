@@ -1,127 +1,97 @@
 from panda3d.core import *
+from direct.interval.IntervalGlobal import *
 from direct.showbase.PythonUtil import fitSrcAngle2Dest
 
-from math import atan2,degrees
-
-def getAngle(p1, p2, vertical=False):
-    xDiff = p2.getX() - p1.getX()
-    yDiff = p2.getY() - p1.getY()
-    zDiff = p2.getZ() - p1.getZ()
-    if vertical:
-        return degrees(atan2(zDiff, yDiff))
-    return degrees(atan2(yDiff, xDiff))
-
+def _distance(start, end):
+    v=end-start
+    return v.length()
 
 class Pathfollower():
-    def __init__(self, node, actor=None, scale=1.0, move_speed=5.0, turn_speed=160.0, min_distance=0.5, align=Vec3(0.5, 0.5, 0.0)):
-        self.node=node
+    def __init__(self, node, move_speed=4.0, turn_speed=300.0, min_distance=1.5, draw_line=False):
+        self.vis_node=node
+        self.node=NodePath('Pathfollower')
         self.move_speed=move_speed
         self.turn_speed=turn_speed
         self.min_distance=min_distance
-        self.align=align
-        self.path=None
-        self.next_target=None
-        self.active=False
-        self.actor=actor
-        self.scale=scale
-        self.tilt=0.0
+        self.seq=Sequence()
+        self.vis=None
+        self.draw_line=draw_line
         self.task=taskMgr.add(self._update, 'update_task')
 
-    def cleanup(self):
-        taskMgr.remove(self.task)
-        self.actor=None
-        self.node=None
-
-    def stop(self):
-        self.active=False
-        if self.actor:
-            if(self.actor.getCurrentAnim()!="idle"):
-                self.actor.loop("idle")
-
-    def start(self):
-        self.active=True
-
-    def followPath(self, path):
-        self.path=path
-        self._nextTarget()
-        if self.next_target==None:
-            self.stop()
-        self.start()
-
-    def _nextTarget(self):
-        if self.path:
-            t=self.path.pop(0)
-            self.next_target=(Vec3(t)*self.scale)+self.align
-        else:
-            self.next_target=None
-
     def _update(self, task):
-        if self.next_target and self.active:
-            dt=globalClock.getDt()
-            #check if we are close enough to get a new target
-            if self.next_target.almostEqual(self.node.getPos(),self.min_distance):
-            #if self.next_target.almostEqual(self.node.getPos()/self.scale,self.min_distance):
-                self._nextTarget()
-                if self.next_target==None:
-                    self.active=False
-                    if self.actor:
-                        if(self.actor.getCurrentAnim()!="idle"):
-                            self.actor.enableBlend()
-                            self.actor.loop("idle")
-                            self.actor.loop("idle_l")
-                            self.actor.loop("idle_r")
-                            L=0.0
-                            R=0.0
-                            C=1.0
-                            if self.tilt>0.0:
-                                R=self.tilt*1.8
-                                L=0.0
-                                C=1.0-R
-                            if self.tilt<0.0:
-                                R=0.0
-                                L=self.tilt*-1.8
-                                C=1.0-L
-                            #print "L, R, C", L, R, C
-                            self.actor.setControlEffect('walk', 0.0)
-                            self.actor.setControlEffect('idle', C)
-                            self.actor.setControlEffect('idle_l', L)
-                            self.actor.setControlEffect('idle_r', R)
-                return task.cont
-            #rotate to the target if needed
-            temp=NodePath('temp')
-            temp.setPos(self.node.getPos())
-            temp.lookAt(self.next_target)
-            targetHpr=temp.getHpr()
-            temp.removeNode()
-            #self.node.setHpr(target_hpr)
+        dt=globalClock.getDt()
+        move_speed=dt*self.move_speed
+        origHpr = self.vis_node.get_hpr()
+        newHpr=origHpr
+        self.vis_node.look_at(self.node)
+        targetHpr = self.vis_node.get_hpr()
+        origHpr = Vec3(fitSrcAngle2Dest(origHpr[0], targetHpr[0]),
+                         fitSrcAngle2Dest(origHpr[1], targetHpr[1]),
+                         fitSrcAngle2Dest(origHpr[2], targetHpr[2]))
+        delta = max(abs(targetHpr[0] - origHpr[0]),
+                    abs(targetHpr[1] - origHpr[1]),
+                    abs(targetHpr[2] - origHpr[2]))
+        if delta != 0:
+            t = min(dt * self.turn_speed/delta, 1.0)
+            newHpr = origHpr + (targetHpr - origHpr) * t
+        self.vis_node.set_hpr(newHpr)
 
-            move_speed=self.move_speed
+        pad=0.0
+        if self.seq.isPlaying():
+            pad=self.min_distance
+        dist=self.vis_node.get_distance(self.node)
 
-            origHpr = self.node.getHpr()
-            # Make the rotation go the shortest way around.
-            origHpr = Vec3(fitSrcAngle2Dest(origHpr[0], targetHpr[0]),
-                             fitSrcAngle2Dest(origHpr[1], targetHpr[1]),
-                             fitSrcAngle2Dest(origHpr[2], targetHpr[2]))
+        if dist > move_speed +pad:
+            move_speed*= dist/3.0
+            self.vis_node.set_y(self.vis_node,move_speed)
 
-            # How far do we have to go from here?
-            delta = max(abs(targetHpr[0] - origHpr[0]),
-                        abs(targetHpr[1] - origHpr[1]),
-                        abs(targetHpr[2] - origHpr[2]))
-            if delta != 0:
-                t = min(dt * self.turn_speed/delta, 1.0)
-                newHpr = origHpr + (targetHpr - origHpr) * t
-                self.node.setHpr(newHpr)
-                #slow down on slopes/bends
-                move_speed=self.move_speed/(max(delta/30.0, 1.0))
-
-            #move forward
-            #print move_speed
-            self.node.setY(self.node, dt*move_speed)
-            if self.actor:
-                if(self.actor.getCurrentAnim()=="idle"):
-                    self.actor.stop()
-                    self.actor.disableBlend()
-                if(self.actor.getCurrentAnim()!="walk"):
-                        self.actor.loop("walk")
         return task.cont
 
+    def followPath(self, path):
+        if self.draw_line:
+            self.draw_path(path)
+        self.stop()
+        self.set_path(path)
+        self.start()
+
+    def set_path(self, path):
+        self.seq=Sequence()
+        prev_point=None
+        blend='easeIn'
+        for point in path:
+            if prev_point:
+                d=_distance(prev_point, point)
+                duration=_distance(prev_point, point)/self.move_speed
+                self.seq.append(LerpPosInterval(self.node, duration, point, prev_point, blendType=blend))
+                blend='noBlend'
+            prev_point=point
+
+    def draw_path(self,path):
+        if self.vis:
+            self.vis.removeNode()
+        l=LineSegs()
+        l.setColor(1,0,0,1)
+        l.setThickness(2)
+        l.moveTo(path[0])
+        for point in path:
+            l.drawTo(point)
+        self.vis=render.attachNewNode(l.create())
+        self.vis.setZ(0.5)
+
+    def start(self):
+        self.seq.start()
+
+    def pause(self):
+        if self.seq.isPlaying():
+            self.seq.pause()
+        else:
+            self.seq.resume()
+
+    def stop(self):
+        pos=self.node.get_pos(render)
+        self.seq.finish()
+        self.node.set_pos(render, pos)
+
+    @property
+    def active(self):
+        return self.seq.isPlaying()
