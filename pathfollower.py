@@ -7,7 +7,7 @@ def _distance(start, end):
     return v.length()
 
 class Pathfollower():
-    def __init__(self, node, move_speed=4.0, turn_speed=300.0, min_distance=1.5, draw_line=False):
+    def __init__(self, node, move_speed=4.0, turn_speed=300.0, min_distance=0.5, draw_line=False):
         self.vis_node=node
         self.node=NodePath('Pathfollower')
         self.move_speed=move_speed

@@ -48,10 +48,11 @@ class Demo(DirectObject):
         self.frowney.setZ(0.5)
         self.frowney.setScale(0.5)
         self.frowney.flattenStrong()
-        self.seeker=Pathfollower(node=self.frowney)
+        self.seeker=Pathfollower(node=self.frowney, draw_line=False)
 
         self.graph=self.make_nav_graph(mesh)
         #self.draw_connections(self.graph)
+
 
         self.start=Point3(0,0,0)
         self.end=None
@@ -135,28 +136,31 @@ class Demo(DirectObject):
         r.setZ(0.5)
         return r
 
+    def round_vec3_to_tuple(self, vec):
+        for i in range(3):
+            vec[i]=round(vec[i]*4.0)/4.0
+        return tuple(vec)
+
+    def find_nearest_node(self, pos, graph):
+        pos=self.round_vec3_to_tuple(pos)
+        if pos in self.graph['lookup']:
+            return self.graph['lookup'][pos]
+
+        dist={0.0}
+        for i in range(50):
+            dist.add(i*0.25)
+            dist.add(i*-0.25)
+            for x in itertools.permutations(dist, 3):
+                key=(pos[0]+x[0], pos[1]+x[1], pos[2]+x[2])
+                if key in self.graph['lookup']:
+                    return self.graph['lookup'][key]
+        return None
+
     def find_path(self, start, end, graph):
-        start_time = timer()
         #find the nearest node in the graph to the start and end
-        best_start=None
-        best_end=None
-        start_node=None
-        end_node=None
-        for node, pos in graph['pos'].items():
-            d=self.distance(start, pos)
-            if best_start is None:
-                start_node=node
-                best_start=d
-            elif d < best_start:
-                start_node=node
-                best_start=d
-            d=self.distance(end, pos)
-            if best_end is None:
-                end_node=node
-                best_end=d
-            elif d < best_end:
-                end_node=node
-                best_end=d
+        start_time = timer()
+        start_node=self.find_nearest_node(start, graph)
+        end_node=self.find_nearest_node(end, graph)
         path=self.a_star_search(graph, start_node, end_node, self.distance)
         end_time = timer()
         if path:
@@ -209,7 +213,7 @@ class Demo(DirectObject):
         for i, triangle in enumerate(self.triangles):
             #print ('triangle ', i ,' of ', len(self.triangles) )
             triangle['center']=self.get_center(triangle['vertex_pos'])
-            triangle['neighbors']=self.get_neighbors(triangle['vertex_id'], vert_dict, i)
+            triangle['neighbors']=self.get_neighbors3(triangle['vertex_id'], vert_dict, i)
         #construct the dict
         edges={}
         cost={}
@@ -222,9 +226,10 @@ class Demo(DirectObject):
             positions[i]=start
             for neighbor in triangle['neighbors']:
                 cost[i][neighbor]=self.distance(start, self.triangles[neighbor]['center'])
+        lookup={self.round_vec3_to_tuple(value):key for (key, value) in positions.items()}
         end_time = timer()
         print ("nav graph made in: ",(end_time - start_time))
-        return {'neighbors':edges, 'cost':cost, 'pos':positions}
+        return {'neighbors':edges, 'cost':cost, 'pos':positions, 'lookup':lookup}
 
     def distance(self, start, end):
         #start and end should be Vec3,
@@ -236,7 +241,8 @@ class Demo(DirectObject):
         return v.lengthSquared()
 
     def get_center(self, vertex):
-        return Vec3((vertex[0][0]+vertex[1][0]+vertex[2][0])/3.0, (vertex[0][1]+vertex[1][1]+vertex[2][1])/3.0, (vertex[0][2]+vertex[1][2]+vertex[2][2])/3.0)
+        v=Vec3((vertex[0][0]+vertex[1][0]+vertex[2][0])/3.0, (vertex[0][1]+vertex[1][1]+vertex[2][1])/3.0, (vertex[0][2]+vertex[1][2]+vertex[2][2])/3.0)
+        return v
 
     def get_neighbors(self, vertex, vert_dict, triangle_id):
         common=set()
