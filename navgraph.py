@@ -4,8 +4,15 @@ from direct.showutil.Rope import Rope
 from functools import wraps
 import itertools
 import heapq
+import sys
 from collections import defaultdict
-import time
+if sys.version_info >= (3, 3):
+    from time import perf_counter as timer
+else:
+    if sys.platform == "win32":
+        from time import clock as timer
+    else:
+        from time import time as timer
 
 class PriorityQueue:
     def __init__(self):
@@ -32,14 +39,21 @@ class NavGraph:
         @wraps(func)
         def wrapper(*args, **kwargs):
             if args[0].debug:
-                start = time.time()
+                start = timer()
                 r = func(*args, **kwargs)
-                end = time.time()
+                end = timer()
                 print('DEBUG: {}.{}() time: {}'.format(func.__module__, func.__name__, end-start))
             else:
                 r = func(*args, **kwargs)
             return r
         return wrapper
+
+    def test_performance(self, start_node=610, end_node=977):
+        start_time = timer()
+        for _ in range(1000):
+            self._a_star_search(start_node, end_node, self._distance)
+        end_time = timer()
+        print ("Performance:", end_time-start_time)
 
     def draw_connections(self):
         try:
@@ -58,9 +72,7 @@ class NavGraph:
         self.visual=render.attachNewNode(l.create())
 
     def _round_vec3_to_tuple(self, vec):
-        for i in range(3):
-            vec[i]=round(vec[i]*4.0)/4.0
-        return tuple(vec)
+        return tuple([round(x*4.0)/4.0 for x in vec])
 
     def _find_nearest_node(self, pos):
         pos=self._round_vec3_to_tuple(pos)
@@ -80,11 +92,9 @@ class NavGraph:
         if len(path)<4 or smooth_factor <0.01:
             return path
         r=Rope()
-        verts=[]
-        for point in path:
-            verts.append((None, point))
+        verts=[(None, point) for point in path]
         r.setup(order=4, verts=verts, knots = None)
-        r.ropeNode.setThickness(2.0)
+        #r.ropeNode.setThickness(2.0)
         #r.reparentTo(render)
         #r.setColor(1,0,1, 1)
         #r.setZ(0.5)
@@ -104,6 +114,12 @@ class NavGraph:
             return None
         return self._smooth_path(path, self.smooth_factor)
 
+    def find_first_geom(self, mesh):
+        for child in mesh.getChildren():
+            node=child.node()
+            if node.isGeomNode():
+                return node.getGeom(0)
+
     @debug_timer
     def make_nav_graph(self, mesh, edge_neighbors_only=True, draw_graph=False):
         '''Creates a navigation graph from a 3D mesh,
@@ -111,47 +127,42 @@ class NavGraph:
         nodes are connected either by shared edges (edge_neighbors_only=True),
         or by shared vertex (edge_neighbors_only=False).
         '''
+        _get_center=self._get_center
+        _get_neighbors=self._get_neighbors
+        _distance=self._distance
+        _round_vec3_to_tuple=self._round_vec3_to_tuple
+
         #make a list of the triangles
         #get the id of each vert in each triangle and
         #get the position of each vert
         triangles=[]
         vert_dict=defaultdict(set)
-        triangle_pos={}
-        dup=defaultdict(set)
-        geom_node=mesh.node()
-        if type(geom_node).__name__=='ModelRoot':
-            geom_node=mesh.getChild(0).node()
-        for geom in geom_node.getGeoms():
-            #geom.decompose()
-            vdata = geom.getVertexData()
-            vertex = GeomVertexReader(vdata, 'vertex')
-            for prim in geom.getPrimitives():
-                num_primitives=prim.getNumPrimitives()
-                for p in range(num_primitives):
-                    #print ('primitive {} of {}'.format(p, num_primitives))
-                    s = prim.getPrimitiveStart(p)
-                    e = prim.getPrimitiveEnd(p)
-                    triangle={'vertex_id':[], 'vertex_pos':[]}
-                    for i in range(s, e):
-                        vi = prim.getVertex(i)
-                        vertex.setRow(vi)
-                        v =tuple([round(i, 4) for i in vertex.getData3f() ])
-                        triangle['vertex_pos'].append(v)
-                        triangle['vertex_id'].append(vi)
-                        vert_dict[vi].add(len(triangles))#len(self.triangles) is the triangle id
-                        dup[v].add(vi)
-                    triangles.append(triangle)
-        for pos, ids in dup.items():
-            if len(ids)>1:
-                ids=list((ids))
-                union=vert_dict[ids[0]]|vert_dict[ids[1]]
-                vert_dict[ids[0]]=union
-                vert_dict[ids[1]]=union
+        #only works ok with one geom so flatten the mesh befor comming here
+        geom=self.find_first_geom(mesh)
+        vdata = geom.getVertexData()
+        vertex = GeomVertexReader(vdata, 'vertex')
+        for prim in geom.getPrimitives():
+            num_primitives=prim.getNumPrimitives()
+            for p in range(num_primitives):
+                #print ('primitive {} of {}'.format(p, num_primitives))
+                s = prim.getPrimitiveStart(p)
+                e = prim.getPrimitiveEnd(p)
+                triangle={'vertex_id':[], 'vertex_pos':[]}
+                for i in range(s, e):
+                    vi = prim.getVertex(i)
+                    vertex.setRow(vi)
+                    v =[round(i, 4) for i in vertex.getData3f() ]
+                    vertex_id=tuple([round(i*4.0)/4.0 for i in v])
+                    triangle['vertex_pos'].append(v)
+                    triangle['vertex_id'].append(vertex_id)
+                    vert_dict[vertex_id].add(len(triangles))#len(self.triangles) is the triangle id
+                triangles.append(triangle)
+
         #get centers and neighbors
         for i, triangle in enumerate(triangles):
             #print ('triangle ', i ,' of ', len(self.triangles) )
-            triangle['center']=self._get_center(triangle['vertex_pos'])
-            triangle['neighbors']=self._get_neighbors(triangle['vertex_id'], vert_dict, i, edge_neighbors_only)
+            triangle['center']=_get_center(triangle['vertex_pos'])
+            triangle['neighbors']=_get_neighbors(triangle['vertex_id'], vert_dict, i, edge_neighbors_only)
         #construct the dict
         edges={}
         cost={}
@@ -163,8 +174,8 @@ class NavGraph:
             start=triangle['center']
             positions[i]=start
             for neighbor in triangle['neighbors']:
-                cost[i][neighbor]=self._distance(start, triangles[neighbor]['center'])
-        lookup={self._round_vec3_to_tuple(value):key for (key, value) in positions.items()}
+                cost[i][neighbor]=_distance(start, triangles[neighbor]['center'])
+        lookup={_round_vec3_to_tuple(value):key for (key, value) in positions.items()}
         self.graph= {'neighbors':edges, 'cost':cost, 'pos':positions, 'lookup':lookup}
         if draw_graph:
             self.draw_connections()
@@ -201,30 +212,35 @@ class NavGraph:
         came_from[start] = None
         cost_so_far[start] = 0
 
+        neighbors=self.graph['neighbors']
+        cost=self.graph['cost']
+        pos=self.graph['pos']
+
         while not frontier.empty():
             current = frontier.get()
 
-            max_move-=1
-            if max_move<0:
-                return None
+            if max_move is not None:
+                max_move-=1
+                if max_move<0:
+                    return None
 
             if current == goal:
                 break
 
-            for next in self.graph['neighbors'][current]:
-                new_cost = cost_so_far[current] + self.graph['cost'][current][next]
+            for next in neighbors[current]:
+                new_cost = cost_so_far[current] + cost[current][next]
                 if next not in cost_so_far or new_cost < cost_so_far[next]:
                     cost_so_far[next] = new_cost
-                    priority = new_cost + heuristic(self.graph['pos'][goal], self.graph['pos'][next])
+                    priority = new_cost + heuristic(pos[goal], pos[next])
                     frontier.put(next, priority)
                     came_from[next] = current
         current = goal
-        path = [self.graph['pos'][current]]
+        path = [pos[current]]
         while current != start:
             try:
                 current = came_from[current]
             except:
                 return None
-            path.append(self.graph['pos'][current])
+            path.append(pos[current])
         path.reverse()
         return path

@@ -41,11 +41,7 @@ class Demo(DirectObject):
         self.world_node = render.attachNewNode('World')
         self.world = BulletWorld()
         triMeshData = BulletTriangleMesh()
-        geom_node=mesh.node()
-        if type(geom_node).__name__=='ModelRoot':
-            geom_node=mesh.getChild(0).node()
-        for geom in geom_node.getGeoms():
-            triMeshData.addGeom(geom)
+        triMeshData.addGeom(mesh.getChild(0).node().getGeom(0))
         shape = BulletTriangleMeshShape(triMeshData, dynamic=False)
         geometry = self.world_node.attachNewNode(BulletRigidBodyNode('StaticGeometry'))
         geometry.node().addShape(shape)
@@ -67,7 +63,7 @@ class Demo(DirectObject):
         if self.start is not None and self.end is not None:
             path=self.graph.find_path(self.start, self.end)
             if path:
-                self.seeker.followPath(path)
+                self.seeker.follow_path(path)
             else:
                 print ('WARRNING: No path or path too long!')
                 self.seeker.stop()

@@ -47,7 +47,7 @@ class PathFollower:
 
         return task.cont
 
-    def followPath(self, path):
+    def follow_path(self, path):
         if self.draw_line:
             self.draw_path(path)
         self.stop()
