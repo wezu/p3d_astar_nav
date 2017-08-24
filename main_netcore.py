@@ -11,6 +11,7 @@ from navgraph import NavGraph
 import subprocess
 import os
 import signal
+import sys
 
 from net import Net
 
@@ -25,7 +26,7 @@ class Demo(DirectObject):
         self.network=Net(recv_from=('', 20001), send_to=('localhost', 20000))
         self.network.bind_call(self.network.header.path, self.follow_path)
 
-        self.server_pid=subprocess.Popen(["ppython","nav_server.py"]).pid
+        self.server_pid=subprocess.Popen([sys.executable,"nav_server.py"]).pid
 
 
         self.helptxt = OnscreenText(text="Click on the mesh to make Frowney move", parent=base.a2dTopLeft,
